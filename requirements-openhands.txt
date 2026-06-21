@@ -1,0 +1,6 @@
+openhands-sdk
+openhands-tools
+pydantic>=2.0
+jinja2
+rich
+litellm

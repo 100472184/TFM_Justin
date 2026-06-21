@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+.venv/
+.venv-oh/
+.env
+.env.local
+.env.*.local
+dist/
+build/
+*.log
+.out/
+.cache/
+.DS_Store
+
+# OpenHands pipeline outputs
+runs/
+agents/openhands_llama3/.env
+tasks/*.md

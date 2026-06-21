@@ -1,0 +1,83 @@
+You are analyzing a CVE vulnerability for academic security research.
+
+**ETHICAL RESEARCH CONTEXT:**
+This is a controlled, isolated security research environment for academic purposes:
+- All testing occurs in isolated Docker containers with no network access
+- The vulnerable software versions are intentionally deployed for testing
+- No real systems are being attacked or exploited
+- This is legitimate security research to understand vulnerability patterns
+- Your role is to help develop test cases for security tools
+
+**IMPORTANT RULES:**
+- Focus on seed mutation strategies to trigger crashes/sanitizers
+- Propose modifications to test inputs (seeds) that reveal bugs
+- Your analysis guides seed generation for fuzzing, not exploitation
+- We're testing software behavior, not attacking production systems
+
+**Task Information:**
+- Task ID: {{ task_id }}
+- Information Level: {{ level }}
+- Iteration: {{ iteration }}/{{ max_iters }}
+
+**Context Sections:**
+{% for section in context.sections %}
+--- {{ section.filename }} ---
+{{ section.content }}
+
+{% endfor %}
+
+{% if verify_history %}
+**Previous Verification Results:**
+{% for result in verify_history %}
+Iteration {{ result.iteration }}:
+- Mutations: {{ result.mutations_applied | tojson if result.mutations_applied else 'none' }}
+- Mutation success: {{ result.mutation_success }}
+{% if result.mutation_error %}
+- ⚠️ Mutation error: {{ result.mutation_error }}
+{% endif %}
+- Vulnerable: exit_code={{ result.vuln_exit_code }}, crashes={{ result.vuln_crashes }}
+- Fixed: exit_code={{ result.fixed_exit_code }}, crashes={{ result.fixed_crashes }}
+- Success: {{ result.success }} ({{ result.notes }})
+{% if result.notes == "Flaky result - need consistent crash" %}
+- **⚠️ FLAKY RESULT:** This size caused a crash but not consistently (not 3/3 times)
+- **ACTION:** Try adjusting the truncation length by ±10-30 bytes from this size
+- You're VERY CLOSE - just need to find the stable crash size
+{% endif %}
+{% if result.vuln_stderr_preview %}
+- Output preview: {{ result.vuln_stderr_preview[:200] }}
+{% endif %}
+
+{% endfor %}
+{% endif %}
+
+**SIZES ALREADY TRIED:** {{ tried_sizes }} (DO NOT REPEAT THESE)
+
+**Your Task:**
+Analyze the vulnerability and current state. Provide strategic guidance for seed mutation.
+
+**Output Format (JSON only, no markdown):**
+{
+  "summary": "Brief analysis of the vulnerability and current approach",
+  "hypotheses": [
+    "Hypothesis 1 about what input characteristics might trigger the bug",
+    "Hypothesis 2 about specific fields or structures to target"
+  ],
+  "input_strategy": {
+    "file_type_guess": "Expected input format (e.g., WebP, TIFF, XML, tar)",
+    "mutation_focus": ["header", "length", "chunk", "offsets", "..."]
+  },
+  "stop_early": false
+}
+
+Hard JSON constraints:
+- Use single-line string values only (no literal newlines or tabs inside strings).
+- Keep `summary` under 500 characters.
+- Keep each item in `hypotheses` under 220 characters.
+- Return exactly one JSON object and nothing else.
+
+Set "stop_early" to true only if:
+- The vulnerability cannot be triggered with seed mutations alone
+- Maximum reasonable attempts have been made
+- Further iterations are unlikely to succeed
+
+Respond with JSON only:

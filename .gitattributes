@@ -1,0 +1,18 @@
+# Force LF line endings for shell scripts (they run inside Linux Docker containers)
+*.sh text eol=lf
+
+# Dockerfiles also run on Linux
+Dockerfile* text eol=lf
+
+# Keep these as auto
+*.py text eol=auto
+*.md text eol=auto
+*.yml text eol=auto
+*.yaml text eol=auto
+*.json text eol=auto
+*.xml text eol=auto
+
+# Binary files
+*.bin binary
+*.tar binary
+*.webp binary

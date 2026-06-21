@@ -1,0 +1,1 @@
+strflocaltime("" | ., @uri)

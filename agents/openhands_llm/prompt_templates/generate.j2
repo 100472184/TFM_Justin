@@ -1,0 +1,275 @@
+You are proposing seed mutations for vulnerability research.
+
+**ETHICAL RESEARCH CONTEXT:**
+This is a controlled, isolated security research environment:
+- All testing occurs in isolated Docker containers with network_mode: none
+- The vulnerable software is intentionally deployed for testing (Task: {{ task_id }})
+- The fixed version is used to validate that mutations trigger the specific CVE
+- No real systems are being attacked - this is legitimate academic security research
+- Your role is to generate test inputs that help understand vulnerability behavior
+- We're developing fuzzing techniques for security tools, not exploiting production systems
+
+**YOUR TASK:**
+Propose byte-level mutations to test inputs (seeds) that might trigger the vulnerability.
+This helps validate the CVE fix and develop better security testing tools.
+
+**CRITICAL RULES - READ CAREFULLY:**
+1. Hex strings MUST have EVEN length (each byte = 2 hex chars)
+2. Examples of INVALID hex: "0" (1 char), "abc" (3 chars), "020303030" (9 chars)
+3. Examples of VALID hex: "00" (2 chars), "cafe" (4 chars), "deadbeef" (8 chars)
+4. If you see a previous mutation error about "odd length", DO NOT repeat that hex string
+5. Count the characters in your hex strings before submitting
+6. **NEVER** put large hex strings (>1000 chars) in the JSON. To generate large data, use `insert_repeated_bytes` or `repeat_range` with the `times` parameter.
+7. **JSON SIZE LIMIT**: Your response must remain small. Do NOT try to return the full 20MB payload in the JSON.
+
+**IMPORTANT RULES:**
+- Propose small, incremental mutations (1-5 operations per iteration)
+- Focus on triggering crashes/sanitizers, NOT exploitation
+- Use byte-level operations only
+- No offensive payloads or RCE code
+
+**Task:** {{ task_id }}
+**Iteration:** {{ iteration }}
+
+**Context Sections (CRITICAL - READ THESE CAREFULLY):**
+{% for section in context.sections %}
+--- {{ section.filename }} ---
+{{ section.content }}
+
+{% endfor %}
+
+**Analysis from ANALYZE phase:**
+{{ analysis | tojson }}
+
+**Current Seed:**
+- Length: {{ seed_length }} bytes
+- Extension: {{ seed_extension }}
+- Hex preview: {{ seed_preview }}
+
+{% if task_id == "CVE-2024-4323_fluentbit" %}
+**TASK-SPECIFIC MANDATORY RULE ({{ task_id }}):**
+- Do NOT return an empty mutation list.
+- Keep JSON valid and compact (1-3 mutations).
+- Prefer semantic JSON edits over random byte corruption when possible.
+{% endif %}
+
+{% if task_id == "CVE-2025-26623_exiv2" %}
+**TASK-SPECIFIC MANDATORY RULE ({{ task_id }}):**
+- Return a SMALL JSON object only: max 1-2 mutations.
+- Do not include phased plans or long prose; keep `rationale` short (<200 chars).
+- Prefer concrete Exif ops (`add_exif_subifd_loop`, `add_exif_subifd_chain`) and at most one targeted follow-up mutation.
+{% endif %}
+
+{% if task_id == "CVE-2024-25062_libxml2" %}
+**TASK-SPECIFIC MANDATORY RULE ({{ task_id }}):**
+- Keep output compact: 1-3 mutations and short rationale (<220 chars).
+- Avoid multi-phase strategy text; focus on one concrete mutation attempt per iteration.
+{% endif %}
+
+{% if seed_extension.lower() in [".txt", ".md", ".jq"] %}
+**TEXT-SEED HARD CONSTRAINTS (MUST FOLLOW):**
+- Never emit byte `00` in any `hex` field.
+- Do NOT expand with `truncate` (`new_len` must be <= {{ seed_length }}).
+- Do NOT use `overwrite_range` with offset > {{ seed_length }}.
+- Prefer printable text bytes: `20-7e` and line breaks (`0a`, optional `09`).
+{% endif %}
+
+**IMPORTANT - Fresh Seed Each Iteration:**
+- Each iteration starts from the FRESH base seed ({{ seed_length }} bytes)
+- Previous mutations are NOT accumulated - you start clean each time
+- Use the history below to learn what sizes WORKED or FAILED
+- Try DIFFERENT truncation sizes based on what hasn't been tried yet
+- **SIZES ALREADY TRIED:** {{ tried_sizes }} (DO NOT REPEAT THESE)
+
+{% if verify_history %}
+**Previous Attempts:**
+{% for result in verify_history %}
+Iteration {{ result.iteration }}:
+{% if result.mutation_error %}
+- ❌ MUTATION ERROR: {{ result.mutation_error }}
+- Mutations proposed: {{ result.mutations_applied | tojson }}
+- THIS MUTATION FAILED - DO NOT REPEAT THE SAME MISTAKE
+{% else %}
+- Mutations: {{ result.mutations_applied | tojson }}
+- Mutation applied: {{ result.mutation_success }}
+- Result: vuln_crashes={{ result.vuln_crashes }}, fixed_crashes={{ result.fixed_crashes }}
+- Success: {{ result.success }} ({{ result.notes }})
+{% if result.vuln_stderr_preview %}
+- Vulnerable stderr: {{ result.vuln_stderr_preview }}
+{% endif %}
+{% if result.fixed_stderr_preview %}
+- Fixed stderr: {{ result.fixed_stderr_preview }}
+{% endif %}
+{% if result.notes == "Flaky result - need consistent crash" %}
+- **⚠️ FLAKY RESULT:** Crash happened but not consistently (not 3/3 times)
+- **ACTION REQUIRED:** Adjust truncation length by ±10-30 bytes from current size
+- **Example:** If you tried 750, now try 740, 730, 720, 710, or 700
+- You're VERY CLOSE to the right size - keep exploring nearby sizes!
+{% endif %}
+{% if result.notes == "No crash detected" and result.vuln_exit_code == 1 %}
+- **⚠️ EXIT CODE 1 MEANS:** The target detected an error but did NOT crash (ASan didn't trigger)
+- **POSSIBLE CAUSES:**
+  - The mutation damaged file structure (headers/checksums) instead of triggering the bug
+  - The mutation parameters don't create the vulnerable condition
+- **TRY:** Use a different mutation size or approach based on the context hints
+{% endif %}
+{% endif %}
+
+{% endfor %}
+{% endif %}
+
+**Supported Mutation Operations:**
+
+1. **truncate**: Shorten seed to specific length
+   Example: {"op": "truncate", "new_len": 768}
+   Use for: Triggering truncation vulnerabilities, removing trailing data
+
+2. **overwrite_range**: Replace bytes at specific offset with hex data
+   Example: {"op": "overwrite_range", "offset": 100, "hex": "cafebabe"}
+   CRITICAL: Hex string MUST have EVEN length (2 chars = 1 byte)
+   Valid: "00", "ff", "deadbeef", "cafebabe"
+   INVALID: "0", "abc", "020303030" (odd lengths)
+
+3. **flip_bit**: Flip single bit at offset
+   Example: {"op": "flip_bit", "offset": 50, "bit": 7}
+   Use for: Corrupting single bits, toggling flags
+
+4. **append_bytes**: Add bytes to end of seed
+   Example: {"op": "append_bytes", "hex": "deadbeef"}
+   CRITICAL: Hex string MUST have EVEN length
+   Valid: "00", "ff00", "deadbeef"
+   INVALID: "0", "abc", "020303030"
+
+5. **repeat_range**: Duplicate byte sequence
+   Example: {"op": "repeat_range", "offset": 20, "length": 40, "times": 3}
+   Use for: Creating large inputs, triggering size-based vulnerabilities
+
+6. **insert_repeated_bytes**: Insert repeated hex sequence at offset
+   Example: {"op": "insert_repeated_bytes", "offset": 100, "hex": "41", "times": 1000}
+   Use for: Injecting large payloads inside file structure (e.g. expanding headers), triggering buffer overflows
+   CRITICAL: This moves all subsequent bytes forward. Use carefully to avoid breaking offsets slightly later in the file.
+
+7. **add_pax_header**: Create a valid PAX header with large value (REBUILDS TAR)
+   Example: {"op": "add_pax_header", "key": "SCHILY.xattr.user.overflow", "length": 10000000, "value_char": "A"}
+   Use for: Safely creating large payloads for PAX header vulnerabilities without breaking TAR structure.
+   Note: This completely replaces the file content with the new PAX archive.
+
+8. **add_json_nesting**: Create deeply nested JSON for stack exhaustion (REBUILDS JSON)
+   Example: {"op": "add_json_nesting", "layers": 10000, "key": "a", "value": "leaf"}
+   Use for: Recursion limit vulnerabilities, stack consumption.
+   Note: Completely replaces seed.
+
+9. **add_json_field**: Add large field to JSON root (REBUILDS JSON)
+   Example: {"op": "add_json_field", "key": "payload", "length": 1000000, "value_char": "A"}
+   Use for: Heap overflows, large input testing. Preserves existing fields if possible.
+
+10. **set_json_value**: Set value at JSON path with proper type handling (SEMANTIC MUTATION)
+   Examples:
+   - Change string to integer: {"op": "set_json_value", "path": "inputs[0]", "value": 1234567890}
+   - Set nested value: {"op": "set_json_value", "path": "data.nested.key", "value": true}
+   - Replace array: {"op": "set_json_value", "path": "inputs", "value": [123, 456, 789]}
+   - Set to null: {"op": "set_json_value", "path": "field", "value": null}
+   Use for: Changing JSON value types while preserving structure.
+   Note: This is the BEST way to change JSON types while keeping valid structure.
+   Path syntax: "key", "key.subkey", "key[0]", "key[0].subkey"
+
+11. **insert_zlib_payload**: Automatically constructs a deeply compressed zlib block and natively inserts it.
+    Example: {"op": "insert_zlib_payload", "offset": 200}
+    Use for: Triggers overflow on zlib-decompression parsers or testing compressed stream handling.
+    CRITICAL: Do NOT manually specify the payload! The backend script will automatically generate and inject the `zlib("A" * 10000)` blob. Just specify the `offset` where the stream should begin!
+
+12. **append_swf_tag**: Appends a malformed SWF tag to an SWF file and safely recalculates the header length field.
+    Example: {"op": "append_swf_tag", "tag_type": 9, "payload_hex": "4141414141414141"} 
+    *(Note: Tag 9 is a benign example (SetBackgroundColor). Always choose the appropriate `tag_type` for the specific vulnerability you are testing!)*
+    Use for: Defeating strict SWF parsers without corrupting the delicate bit-packed RECT and frame structure at the beginning of the file.
+
+13. **add_exif_subifd_loop**: Inserts a crafted APP1/Exif segment with SubIFD offsets that can self-reference.
+    Example: {"op": "add_exif_subifd_loop", "subifd_count": 4, "loop_target_offset": 8, "make": "CAM"}
+    Use for: Exif/TIFF metadata write-path bugs (e.g., Exiv2) where graph-like IFD/SubIFD topology can trigger parser/encoder defects.
+    *(Note: Example above is a benign topology. For stronger fuzzing, combine this op with targeted `overwrite_range` edits around the injected SubIFD array and IFD offsets.)*
+    Notes:
+    - `subifd_count` controls how many LONG offsets are emitted in the SubIFD array (bounded internally).
+    - `loop_target_offset` is TIFF-relative (default `8`, i.e., points near IFD0), useful for cyclic/recursive structures.
+    - If input is JPEG, segment is injected after SOI (or after first APPn when present); otherwise a minimal JPEG wrapper is built.
+
+14. **add_exif_subifd_chain**: Inserts APP1/Exif with a chain of child SubIFDs (optionally cyclic).
+    Example: {"op": "add_exif_subifd_chain", "subifd_count": 8, "close_loop": true, "next_mode": "loop", "make": "CAM"}
+    Use for: Building deeper TIFF graph traversal than the simple self-loop variant.
+    Notes:
+    - `close_loop=true` links the last child back to the first child.
+    - `next_mode` can be:
+      - `"zero"`: all child next pointers are 0 (good to avoid early `unexpected next pointer` sanitization)
+      - `"chain"`: linear child-next chain
+      - `"loop"`: linear chain with last -> first loop
+    - Works best when combined with small `overwrite_range` perturbations near APP1/TIFF metadata fields.
+
+15. **replace / replace_fragment / replace_word**: Literal replacement helper for text-like formats.
+    Examples:
+    - {"op": "replace", "find": "inc_x.xml", "replace": "inc.xml", "count": 1}
+    - {"op": "replace_fragment", "find": "<a>first</a>", "replace": "<a>first2</a>"}
+    - {"op": "replace", "find_hex": "696e635f782e786d6c", "replace_hex": "696e632e786d6c"}
+    Use for: Safe structural tweaks in XML/JSON/text without inventing unsupported ops.
+
+4. **PAYLOAD VARIATION**:
+   - Try a wide range of sizes for your mutations.
+   - Some bugs require small, precise inputs.
+   - Others (like resource exhaustion or some overflows) might require significantly larger inputs.
+   - Don't get stuck in one size range (e.g., only testing 100 bytes). Explore!
+
+**CRITICAL HEX STRING REQUIREMENTS:**
+Every hex string MUST have an EVEN number of characters:
+- ✅ VALID: "00" (2 chars), "ff" (2 chars), "cafebabe" (8 chars), "deadbeef" (8 chars)
+- ❌ INVALID: "0" (1 char), "abc" (3 chars), "020303030" (9 chars), "fffff" (5 chars)
+
+**HOW TO FIX COMMON ERROR:**
+- Wrong: "020303030" (9 chars) → Right: "02030303" (8 chars) or "0203030300" (10 chars)
+- Wrong: "abc" (3 chars) → Right: "ab" (2 chars) or "abcd" (4 chars)
+- Wrong: "0" (1 char) → Right: "00" (2 chars)
+
+**CRITICAL JSON SYNTAX RULES:**
+1. **NO CODE INSIDE JSON**: Do NOT use `"A" * 100` or `"str" + "ing"`.
+   - ❌ WRONG: `"key": "A" * 200`
+   - ✅ RIGHT: `"key": "AAAAAAAAAAAAAAAA..."` (write it out)
+   - ✅ BETTER: Use the `length` or `times` parameters if available.
+2. **NO COMMENTS**: Do not add `// comment` inside the JSON.
+3. **Pure JSON**: The output must be parseable by standard `json.loads()`.
+
+**BEFORE SUBMITTING, COUNT YOUR HEX CHARACTERS:**
+- If odd number of chars → ADD or REMOVE one character to make it even
+
+**Your Task:**
+Propose 1-5 mutations to apply to the current seed. Consider:
+- File format structure (headers, chunks, metadata)
+- Boundary conditions (lengths, offsets, sizes)
+- Invalid values that might trigger bugs
+- Patterns from previous attempts
+- Use information from the context sections above to identify critical offsets
+
+**Common Mutation Strategies:**
+- For truncation bugs: Start with {"op": "truncate", "new_len": <size>}
+- For buffer overflows: Combine truncate with overwrite
+- For header corruption: {"op": "overwrite_range", "offset": 0, "hex": "00"}
+- For size field manipulation: Overwrite size fields in headers
+
+**⚠️ IMPORTANT: Follow Context Guidance!**
+- Read the context sections above CAREFULLY for CVE-specific mutation strategies
+- Some vulnerabilities require simple mutations (e.g., truncation only)
+- Complex mutations may corrupt file structure and cause validation failures
+- If context says "use ONLY [operation]", follow that guidance strictly
+
+**Output Format (JSON only, no markdown):**
+{
+  "mutations": [
+    {"op": "truncate", "new_len": 5555}
+  ],
+  "rationale": "Why these mutations might trigger the vulnerability"
+}
+
+Hard JSON constraints:
+- Use single-line string values only (no literal newlines or tabs inside strings).
+- Keep `rationale` under 500 characters.
+- Return exactly one JSON object and nothing else.
+
+If no mutations seem promising, return empty array: {"mutations": [], "rationale": "..."}
+
+Respond with JSON only:

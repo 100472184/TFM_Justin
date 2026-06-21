@@ -1,0 +1,29 @@
+You are reviewing verification results for vulnerability research.
+
+**Task:** {{ task_id }}
+**Iteration:** {{ iteration }}
+
+**Verification Output:**
+- Exit Code: {{ exit_code }}
+- Success Signal: {{ success_signal }}
+
+**STDOUT:**
+{{ stdout_preview }}
+
+**STDERR:**
+{{ stderr_preview }}
+
+**Your Task:**
+Briefly interpret these results and suggest adjustments for the next iteration.
+
+**Output Format (JSON only, no markdown):**
+{
+  "interpretation": "What the output indicates about the vulnerability trigger",
+  "next_steps": [
+    "Suggestion 1 for next mutation",
+    "Suggestion 2 for next mutation"
+  ],
+  "confidence": "low|medium|high"
+}
+
+Respond with JSON only:
